@@ -49,6 +49,7 @@ public class StreamingWorkbookReader implements Iterable<Sheet>, AutoCloseable {
   private OPCPackage pkg;
   private SharedStringsTable sst;
   private boolean use1904Dates = false;
+  private StylesTable styles;
 
   /**
    * This constructor exists only so the StreamingReader can instantiate
@@ -117,7 +118,7 @@ public class StreamingWorkbookReader implements Iterable<Sheet>, AutoCloseable {
         sst = reader.getSharedStringsTable();
       }
 
-      StylesTable styles = reader.getStylesTable();
+      styles = reader.getStylesTable();
       NodeList workbookPr = searchForNodeList(document(reader.getWorkbookData()), "/workbook/workbookPr");
       if(workbookPr.getLength() == 1) {
         final Node date1904 = workbookPr.item(0).getAttributes().getNamedItem("date1904");
@@ -162,6 +163,10 @@ public class StreamingWorkbookReader implements Iterable<Sheet>, AutoCloseable {
 
   List<? extends Sheet> getSheets() {
     return sheets;
+  }
+
+  StylesTable getStylesTable() {
+    return styles;
   }
 
   public List<Map<String, String>> getSheetProperties() {

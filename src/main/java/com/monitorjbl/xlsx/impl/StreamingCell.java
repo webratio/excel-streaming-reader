@@ -1,19 +1,24 @@
 package com.monitorjbl.xlsx.impl;
 
-import com.monitorjbl.xlsx.exceptions.NotSupportedException;
+import java.util.Calendar;
+import java.util.Date;
+
 import org.apache.poi.hssf.usermodel.HSSFDateUtil;
+import org.apache.poi.ss.SpreadsheetVersion;
 import org.apache.poi.ss.formula.FormulaParseException;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.Comment;
+import org.apache.poi.ss.usermodel.DateUtil;
+import org.apache.poi.ss.usermodel.FormulaError;
 import org.apache.poi.ss.usermodel.Hyperlink;
 import org.apache.poi.ss.usermodel.RichTextString;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.xssf.usermodel.XSSFRichTextString;
 
-import java.util.Calendar;
-import java.util.Date;
+import com.monitorjbl.xlsx.exceptions.NotSupportedException;
 
 public class StreamingCell implements Cell {
 
@@ -33,11 +38,14 @@ public class StreamingCell implements Cell {
   private String cachedFormulaResultType;
   private Row row;
   private CellStyle cellStyle;
+  private RichTextString richText;
+  private Sheet sheet;
 
-  public StreamingCell(int columnIndex, int rowIndex, boolean use1904Dates) {
+  public StreamingCell(StreamingSheet sheet, int columnIndex, int rowIndex, boolean use1904Dates) {
     this.columnIndex = columnIndex;
     this.rowIndex = rowIndex;
     this.use1904Dates = use1904Dates;
+    this.sheet = sheet;
   }
 
   public Object getContents() {
@@ -295,87 +303,112 @@ public class StreamingCell implements Cell {
     }
   }
 
-  /* Not supported */
-
-  /**
-   * Not supported
-   */
   @Override
   public void setCellType(int cellType) {
-    throw new NotSupportedException();
+    if (cellType == CELL_TYPE_BLANK) {
+      setType(null);
+    } else if (cellType == CELL_TYPE_NUMERIC) {
+      setType("n");
+    } else if (cellType == CELL_TYPE_STRING) {
+      setType("s");
+    } else if (cellType == CELL_TYPE_FORMULA) {
+      setType("str");
+    } else if (cellType == CELL_TYPE_BOOLEAN) {
+      setType("b");
+    } else if (cellType == CELL_TYPE_ERROR) {
+      setType("e");
+    } else {
+      throw new UnsupportedOperationException("Unsupported cell type '" + cellType + "'");
+    }
   }
 
-  /**
-   * Not supported
-   */
   @Override
   public Sheet getSheet() {
-    throw new NotSupportedException();
+    return this.sheet;
   }
 
-  /**
-   * Not supported
-   */
   @Override
   public void setCellValue(double value) {
-    throw new NotSupportedException();
+    if (Double.isInfinite(value)) {
+      // Excel does not support positive/negative infinities,
+      // rather, it gives a #DIV/0! error in these cases.
+      setCellType(CELL_TYPE_ERROR);
+      setContents(FormulaError.DIV0.getString());
+    } else if (Double.isNaN(value)) {
+      // Excel does not support Not-a-Number (NaN),
+      // instead it immediately generates an #NUM! error.
+      setCellType(CELL_TYPE_ERROR);
+      setContents(FormulaError.NUM.getString());
+    } else {
+      setCellType(CELL_TYPE_NUMERIC);
+      setContents(String.valueOf(value));
+    }
+
   }
 
-  /**
-   * Not supported
-   */
   @Override
   public void setCellValue(Date value) {
-    throw new NotSupportedException();
+    setCellValue(DateUtil.getExcelDate(value, use1904Dates));
   }
 
-  /**
-   * Not supported
-   */
   @Override
   public void setCellValue(Calendar value) {
-    throw new NotSupportedException();
+    setCellValue(DateUtil.getExcelDate(value, use1904Dates));
   }
 
-  /**
-   * Not supported
-   */
   @Override
   public void setCellValue(RichTextString value) {
-    throw new NotSupportedException();
+    if (value == null || value.getString() == null) {
+      setCellType(Cell.CELL_TYPE_BLANK);
+      return;
+    }
+
+    if (value.length() > SpreadsheetVersion.EXCEL2007.getMaxTextLength()) {
+      throw new IllegalArgumentException("The maximum length of cell contents (text) is 32,767 characters");
+    }
+
+    int cellType = getCellType();
+    switch (cellType) {
+    case Cell.CELL_TYPE_FORMULA:
+      setContents(value.getString());
+      setCellType(CELL_TYPE_STRING);
+      break;
+    default:
+      setContents(value.getString());
+      break;
+    }
+
   }
 
-  /**
-   * Not supported
-   */
   @Override
   public void setCellValue(String value) {
-    throw new NotSupportedException();
+    setCellValue(value == null ? null : new XSSFRichTextString(value));
   }
 
-  /**
-   * Not supported
-   */
   @Override
   public void setCellFormula(String formula) throws FormulaParseException {
-    throw new NotSupportedException();
+    setFormula(formula);
   }
 
-  /**
-   * Not supported
-   */
+  void setRichText(RichTextString richText) {
+    this.richText = richText;
+  }
+
   @Override
   public RichTextString getRichStringCellValue() {
-    throw new NotSupportedException();
+    if (this.richText == null) {
+      this.richText = new XSSFRichTextString();
+    }
+    return this.richText;
   }
 
-  /**
-   * Not supported
-   */
   @Override
   public void setCellValue(boolean value) {
-    throw new NotSupportedException();
+    setCellType(CELL_TYPE_BOOLEAN);
+    setRawContents(value);
   }
+
+  /* Not supported */
 
   /**
    * Not supported

@@ -1,5 +1,10 @@
 package com.monitorjbl.xlsx.impl;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.util.Iterator;
+import java.util.List;
+
 import org.apache.poi.ss.formula.udf.UDFFinder;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.CreationHelper;
@@ -10,14 +15,12 @@ import org.apache.poi.ss.usermodel.PictureData;
 import org.apache.poi.ss.usermodel.Row.MissingCellPolicy;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
-
-import java.io.IOException;
-import java.io.OutputStream;
-import java.util.Iterator;
-import java.util.List;
+import org.apache.poi.xssf.usermodel.XSSFFont;
+import org.openxmlformats.schemas.spreadsheetml.x2006.main.CTFont;
 
 public class StreamingWorkbook implements Workbook, AutoCloseable {
   private final StreamingWorkbookReader reader;
+  private StreamingCreationHelper creationHelper;
 
   public StreamingWorkbook(StreamingWorkbookReader reader) {
     this.reader = reader;
@@ -224,12 +227,14 @@ public class StreamingWorkbook implements Workbook, AutoCloseable {
     throw new UnsupportedOperationException();
   }
 
-  /**
-   * Not supported
-   */
   @Override
   public Font createFont() {
-    throw new UnsupportedOperationException();
+    CTFont ctFont = CTFont.Factory.newInstance();
+    XSSFFont font = new XSSFFont(ctFont);
+    font.setFontName(XSSFFont.DEFAULT_FONT_NAME);
+    font.setFontHeight((double) XSSFFont.DEFAULT_FONT_SIZE);
+    font.registerTo(reader.getStylesTable());
+    return font;
   }
 
   /**
@@ -424,12 +429,12 @@ public class StreamingWorkbook implements Workbook, AutoCloseable {
     throw new UnsupportedOperationException();
   }
 
-  /**
-   * Not supported
-   */
   @Override
   public CreationHelper getCreationHelper() {
-    throw new UnsupportedOperationException();
+    if (creationHelper == null) {
+      creationHelper = new StreamingCreationHelper(this);
+    }
+    return creationHelper;
   }
 
   /**

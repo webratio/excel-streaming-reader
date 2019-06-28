@@ -29,6 +29,7 @@ public class StreamingSheet implements Sheet {
   public StreamingSheet(String name, StreamingSheetReader reader) {
     this.name = name;
     this.reader = reader;
+    reader.setSheet(this);
   }
 
   StreamingSheetReader getReader() {
@@ -90,12 +91,9 @@ public class StreamingSheet implements Sheet {
     throw new UnsupportedOperationException();
   }
 
-  /**
-   * Not supported
-   */
   @Override
   public Row getRow(int rownum) {
-    throw new UnsupportedOperationException();
+    return reader.getRow(rownum);
   }
 
   /**
