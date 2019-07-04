@@ -183,3 +183,12 @@ Workbook workbook = StreamingReader.builder()
 ```
 
 This library will ONLY work with XLSX files. The older XLS format is not capable of being streamed.
+
+# Debugging tests
+
+In order to debug the tests with Eclipse, you need to launch maven tests in debug mode, in order to let it wait for connections on the debug agent.
+To accomplish this, just run maven from command line:
+<pre>
+mvn -Dmaven.surefire.debug test
+</pre>
+This will make maven wait for incoming connection on port `5005`. To actually connect, just create and launch a **Remote Java Application** configuration. For more details, see [Maven Surfire Plugin](https://maven.apache.org/surefire/maven-surefire-plugin/examples/debugging.html) documentation.

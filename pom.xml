@@ -23,6 +23,15 @@
   </developers>
 
   <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>3.0.0-M3</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -45,6 +54,9 @@
             </goals>
           </execution>
         </executions>
+        <configuration>
+          <finalName>wr-excel-streaming-reader-${project.version}</finalName>
+        </configuration>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -58,6 +70,17 @@
             </goals>
           </execution>
         </executions>
+        <configuration>
+          <finalName>wr-excel-streaming-reader-${project.version}</finalName>
+        </configuration>
+      </plugin>
+      <plugin>
+	    <groupId>org.apache.maven.plugins</groupId>
+	    <artifactId>maven-jar-plugin</artifactId>
+	    <version>2.3.2</version>
+	    <configuration>
+	      <finalName>wr-excel-streaming-reader-${project.version}</finalName>                   
+	    </configuration>
       </plugin>
     </plugins>
   </build>

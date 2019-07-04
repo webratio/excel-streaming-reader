@@ -6,11 +6,14 @@ import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 
+import java.io.Serializable;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.TreeMap;
 
-public class StreamingRow implements Row {
+public class StreamingRow implements Row, Serializable {
+  private static final long serialVersionUID = 1L;
+
   private int rowIndex;
   private boolean isHidden;
   private TreeMap<Integer, Cell> cellMap = new TreeMap<>();

@@ -5,6 +5,7 @@ import com.monitorjbl.xlsx.exceptions.OpenException;
 import com.monitorjbl.xlsx.exceptions.ReadException;
 import com.monitorjbl.xlsx.sst.BufferedStringsTable;
 import com.monitorjbl.xlsx.impl.StreamingSheetReader;
+import com.monitorjbl.xlsx.impl.StreamingStylesTable;
 import com.monitorjbl.xlsx.impl.StreamingWorkbook;
 import com.monitorjbl.xlsx.impl.StreamingWorkbookReader;
 import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
@@ -345,7 +346,7 @@ public class StreamingReader implements Iterable<Row>, AutoCloseable {
           sst = reader.getSharedStringsTable();
         }
 
-        StylesTable styles = reader.getStylesTable();
+        StreamingStylesTable styles = StreamingStylesTable.from(reader.getStylesTable());
         NodeList workbookPr = searchForNodeList(document(reader.getWorkbookData()), "/workbook/workbookPr");
         if (workbookPr.getLength() == 1) {
           final Node date1904 = workbookPr.item(0).getAttributes().getNamedItem("date1904");

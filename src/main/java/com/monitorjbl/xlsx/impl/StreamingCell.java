@@ -1,5 +1,6 @@
 package com.monitorjbl.xlsx.impl;
 
+import java.io.Serializable;
 import java.util.Calendar;
 import java.util.Date;
 
@@ -20,7 +21,8 @@ import org.apache.poi.xssf.usermodel.XSSFRichTextString;
 
 import com.monitorjbl.xlsx.exceptions.NotSupportedException;
 
-public class StreamingCell implements Cell {
+public class StreamingCell implements Cell, Serializable {
+  private static final long serialVersionUID = 1L;
 
   private static final String FALSE_AS_STRING = "0";
   private static final String TRUE_AS_STRING  = "1";
@@ -397,7 +399,7 @@ public class StreamingCell implements Cell {
   @Override
   public RichTextString getRichStringCellValue() {
     if (this.richText == null) {
-      this.richText = new XSSFRichTextString();
+      this.richText = new XSSFRichTextString(getStringCellValue());
     }
     return this.richText;
   }

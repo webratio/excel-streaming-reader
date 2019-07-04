@@ -1,9 +1,13 @@
 package com.monitorjbl.xlsx.impl;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -24,13 +28,10 @@ import javax.xml.stream.events.StartElement;
 import javax.xml.stream.events.XMLEvent;
 
 import org.apache.poi.ss.usermodel.BuiltinFormats;
-import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.RichTextString;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.util.CellReference;
 import org.apache.poi.xssf.model.SharedStringsTable;
-import org.apache.poi.xssf.model.StylesTable;
-import org.apache.poi.xssf.usermodel.XSSFCellStyle;
 import org.apache.poi.xssf.usermodel.XSSFRichTextString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,13 +39,16 @@ import org.xml.sax.SAXException;
 
 import com.monitorjbl.xlsx.exceptions.CloseException;
 
-public class StreamingSheetReader implements Iterable<Row> {
+public class StreamingSheetReader implements Iterable<Row>, Serializable {
+
+  private static final long serialVersionUID = 1L;
+
   private static final Logger log = LoggerFactory.getLogger(StreamingSheetReader.class);
 
   private final SharedStringsTable sst;
-  private final StylesTable stylesTable;
-  private final XMLEventReader parser;
-  private final DataFormatter dataFormatter = new DataFormatter();
+  private final StreamingStylesTable stylesTable;
+  private final transient XMLEventReader parser;
+  private final StreamingDataFormatter dataFormatter = new StreamingDataFormatter();
   private final Set<Integer> hiddenColumns = new HashSet<>();
 
   private int lastRowNum;
@@ -57,9 +61,13 @@ public class StreamingSheetReader implements Iterable<Row> {
   private StreamingCell currentCell;
   private StreamingSheet sheet;
   private boolean use1904Dates;
-  private final Map<Integer, Row> rowsByRownum = new HashMap<Integer, Row>();
+  private final Map<Integer, File> rowsByRownum = new HashMap<Integer, File>();
+  private final Set<String> rowsFiles = new HashSet<String>();
+  private File currentRowFile;
+  private int currentRowFileBase;
 
-  public StreamingSheetReader(SharedStringsTable sst, StylesTable stylesTable, XMLEventReader parser, final boolean use1904Dates, int rowCacheSize) {
+  public StreamingSheetReader(SharedStringsTable sst, StreamingStylesTable stylesTable, XMLEventReader parser,
+      final boolean use1904Dates, int rowCacheSize) {
     this.sst = sst;
     this.stylesTable = stylesTable;
     this.parser = parser;
@@ -79,7 +87,15 @@ public class StreamingSheetReader implements Iterable<Row> {
         handleEvent(parser.nextEvent());
       }
       rowCacheIterator = rowCache.iterator();
-      return rowCacheIterator.hasNext();
+      boolean somethingRead = rowCacheIterator.hasNext();
+      if (somethingRead) {
+        currentRowFile = getRowsFileName();
+        currentRowFileBase = writeRows(currentRowFile);
+        for (Row row : rowCache) {
+          rowsByRownum.put(row.getRowNum(), currentRowFile);
+        }
+      }
+      return somethingRead;
     } catch(XMLStreamException | SAXException e) {
       log.debug("End of stream");
     }
@@ -173,7 +189,6 @@ public class StreamingSheetReader implements Iterable<Row> {
         currentCell.setContents(formattedContents());
       } else if("row".equals(tagLocalName) && currentRow != null) {
         rowCache.add(currentRow);
-        rowsByRownum.put(currentRow.getRowNum(), currentRow);
       } else if("c".equals(tagLocalName)) {
         currentRow.getCellMap().put(currentCell.getColumnIndex(), currentCell);
       } else if("f".equals(tagLocalName)) {
@@ -234,7 +249,7 @@ public class StreamingSheetReader implements Iterable<Row> {
   void setFormatString(StartElement startElement, StreamingCell cell) {
     Attribute cellStyle = startElement.getAttributeByName(new QName("s"));
     String cellStyleString = (cellStyle != null) ? cellStyle.getValue() : null;
-    XSSFCellStyle style = null;
+    StreamingCellStyle style = null;
 
     if(cellStyleString != null) {
       style = stylesTable.getStyleAt(Integer.parseInt(cellStyleString));
@@ -343,6 +358,14 @@ public class StreamingSheetReader implements Iterable<Row> {
   public void close() {
     try {
       parser.close();
+      // clean up the files
+      for (String rowsFile : rowsFiles) {
+        File f = new File(rowsFile);
+        log.debug("Deleting rows file [" + f.getAbsolutePath() + "]");
+        f.delete();
+      }
+      rowsFiles.clear();
+      rowsByRownum.clear();
     } catch(XMLStreamException e) {
       throw new CloseException(e);
     }
@@ -350,11 +373,58 @@ public class StreamingSheetReader implements Iterable<Row> {
 
   Row getRow(int rownum) {
     if (!rowsByRownum.containsKey(rownum)) {
-      rowsByRownum.clear();
       // makes the reader to read some more rows
       getRow();
     }
-    return rowsByRownum.get(rownum);
+    // read the row bunch from the file
+    File rowsFile = rowsByRownum.get(rownum);
+    if (!rowsFile.getAbsolutePath().equals(currentRowFile.getAbsolutePath())) {
+      // we do not have in memory the wanted cells, so we have to load them
+      currentRowFileBase = readRows(rowsFile);
+      currentRowFile = rowsFile;
+      rowsFiles.add(rowsFile.getAbsolutePath());
+    }
+    return rowCache.get(rownum - currentRowFileBase);
+  }
+
+  private File getRowsFileName() {
+    File rowsFile = null;
+    try {
+      String rowsFileName = Files.createTempFile(String.valueOf(System.currentTimeMillis()), ".ser").toString();
+      rowsFile = new File(rowsFileName);
+      rowsFile.mkdirs();
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+    return rowsFile;
+  }
+
+  private int writeRows(File rowsFile) {
+    log.debug("Writing rows to file [" + rowsFile.getAbsolutePath() + "]");
+    int base = -1;
+    try (FileOutputStream fout = new FileOutputStream(rowsFile);
+        ObjectOutputStream oos = new ObjectOutputStream(fout);) {
+      base = rowCache.get(0).getRowNum();
+      oos.writeInt(rowCache.get(0).getRowNum());
+      oos.writeObject(rowCache);
+      rowsFiles.add(rowsFile.getAbsolutePath());
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+    return base;
+  }
+
+  private int readRows(File rowsFile) {
+    log.debug("Reading rows from file [" + rowsFile.getAbsolutePath() + "]");
+    rowCache.clear();
+    int base = -1;
+    try (FileInputStream fin = new FileInputStream(rowsFile); ObjectInputStream ois = new ObjectInputStream(fin);) {
+      base = ois.readInt();
+      rowCache = (List<Row>) ois.readObject();
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+    return base;
   }
 
   static File writeInputStreamToFile(InputStream is, int bufferSize) throws IOException {
@@ -400,5 +470,11 @@ public class StreamingSheetReader implements Iterable<Row> {
     public void remove() {
       throw new RuntimeException("NotSupported");
     }
+  }
+
+  private void writeObject(ObjectOutputStream os) throws IOException {
+  }
+
+  private void readObject(ObjectInputStream is) throws IOException, ClassNotFoundException {
   }
 }

@@ -230,7 +230,7 @@ public class StreamingWorkbook implements Workbook, AutoCloseable {
   @Override
   public Font createFont() {
     CTFont ctFont = CTFont.Factory.newInstance();
-    XSSFFont font = new XSSFFont(ctFont);
+    StreamingFont font = new StreamingFont(ctFont);
     font.setFontName(XSSFFont.DEFAULT_FONT_NAME);
     font.setFontHeight((double) XSSFFont.DEFAULT_FONT_SIZE);
     font.registerTo(reader.getStylesTable());

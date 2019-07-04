@@ -18,10 +18,13 @@ import org.apache.poi.ss.usermodel.SheetConditionalFormatting;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.util.CellRangeAddress;
 
+import java.io.Serializable;
 import java.util.Iterator;
 import java.util.List;
 
-public class StreamingSheet implements Sheet {
+public class StreamingSheet implements Sheet, Serializable {
+
+  private static final long serialVersionUID = 1L;
 
   private final String name;
   private final StreamingSheetReader reader;
