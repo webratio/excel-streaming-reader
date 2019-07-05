@@ -182,7 +182,28 @@ Workbook workbook = StreamingReader.builder()
         .open(f);
 ```
 
+In order to deal with big XSLX files, with thousands of rows and even more cells, the cached rows hold by `StreamingSheetReader.rowCache` and read by `StreamingSheetReader.getRow()` method are serialized and saved into a temporary file. 
+
+The main scenario this solution is targeting is to make it possible to process all the rows of a big XLSX file, so all of the rows of a bunch are saved into the same temporary file; the size of the bunch matches the `StreamingSheetReader.rowCacheSize` value, resulting in best performance when executing sequencial read of cell values (ie, looping over the rows and get their cell values); in such this scenario, just one de-serialization is enough to get a bunch of subsequent rows back in memory. 
+
+Drawbacks of this approach is, of course, the random access to rows and cells which may trigger a lot of de-serialization and therefore slow down the process.
+
+The methods performing serialization and de-serialization are `StreamingSheetReader.readRows()` and `StreamingSheetReader.writeRows()` which also save and restore the base rownum of the whole bunch.
+
+When parsing is completed, the `StreamingSheetReader.close()` method invocation will perform the clean-up of all the temporary files created during the process.
+
 This library will ONLY work with XLSX files. The older XLS format is not capable of being streamed.
+
+# Improvements
+
+A nice-to-have could be the capability of automatically pick the value of the row cache size, finding a trade-off between the number of files created and their size (which translates to how much time is spent to deserialize with respect to the number of rows saved). A good starting point could be set `StreamingSheetReader.rowCacheSize` to a percentage of the whole number of rows. For example:
+
+```java
+
+   lastRowNum = Integer.parseInt(ref.substring(i + 1)) - 1;
+   rowCacheSize = lastRowNum / 10; // each file will hold up to 10% of the whole rows
+   
+```
 
 # Debugging tests
 
