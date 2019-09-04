@@ -4,7 +4,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
@@ -53,7 +52,7 @@ public class StreamingSheetReader implements Iterable<Row>, Serializable {
 
   private int lastRowNum;
   private int rowCacheSize;
-  private List<Row> rowCache = new ArrayList<>();
+  private List<Row> rowCache;
   private Iterator<Row> rowCacheIterator;
 
   private String lastContents;
@@ -64,7 +63,7 @@ public class StreamingSheetReader implements Iterable<Row>, Serializable {
   private final Map<Integer, File> rowsByRownum = new HashMap<Integer, File>();
   private final Set<String> rowsFiles = new HashSet<String>();
   private File currentRowFile;
-  private int currentRowFileBase;
+  private RowWindow currentRowFileWindow;
 
   public StreamingSheetReader(SharedStringsTable sst, StreamingStylesTable stylesTable, XMLEventReader parser,
       final boolean use1904Dates, int rowCacheSize) {
@@ -73,6 +72,8 @@ public class StreamingSheetReader implements Iterable<Row>, Serializable {
     this.parser = parser;
     this.use1904Dates = use1904Dates;
     this.rowCacheSize = rowCacheSize;
+    this.currentRowFileWindow = null;
+    this.rowCache = new ArrayList<Row>(rowCacheSize);
   }
 
   /**
@@ -90,10 +91,26 @@ public class StreamingSheetReader implements Iterable<Row>, Serializable {
       boolean somethingRead = rowCacheIterator.hasNext();
       if (somethingRead) {
         currentRowFile = getRowsFileName();
-        currentRowFileBase = writeRows(currentRowFile);
+        int minRowNum = Integer.MAX_VALUE;
+        int maxRowNum = Integer.MIN_VALUE;
+        int[] rowMap = new int[rowCacheSize];
         for (Row row : rowCache) {
-          rowsByRownum.put(row.getRowNum(), currentRowFile);
+          int currentRowNum = row.getRowNum();
+          rowsByRownum.put(currentRowNum, currentRowFile);
+          minRowNum = Math.min(minRowNum, currentRowNum);
+          maxRowNum = Math.max(maxRowNum, currentRowNum);
         }
+
+        // iterate again the row cache to build the mapping between the row num and the
+        // actual position in the array
+        int rowMapIndex = 0;
+        for (Row row : rowCache) {
+          int currentRowNum = row.getRowNum();
+          rowMap[currentRowNum - minRowNum] = rowMapIndex++;
+        }
+
+        currentRowFileWindow = new RowWindow(minRowNum, maxRowNum, rowMap);
+        writeRows(currentRowFile, currentRowFileWindow);
       }
       return somethingRead;
     } catch(XMLStreamException | SAXException e) {
@@ -372,19 +389,24 @@ public class StreamingSheetReader implements Iterable<Row>, Serializable {
   }
 
   Row getRow(int rownum) {
-    if (!rowsByRownum.containsKey(rownum)) {
+    if (currentRowFileWindow == null || !currentRowFileWindow.contains(rownum)) {
       // makes the reader to read some more rows
       getRow();
+    }
+    // if the wanted row did't get read, it means there is no such a row (empty row)
+    if (currentRowFileWindow.contains(rownum) && !rowsByRownum.containsKey(rownum)) {
+      return null;
     }
     // read the row bunch from the file
     File rowsFile = rowsByRownum.get(rownum);
     if (!rowsFile.getAbsolutePath().equals(currentRowFile.getAbsolutePath())) {
       // we do not have in memory the wanted cells, so we have to load them
-      currentRowFileBase = readRows(rowsFile);
+      currentRowFileWindow = readRows(rowsFile);
       currentRowFile = rowsFile;
       rowsFiles.add(rowsFile.getAbsolutePath());
     }
-    return rowCache.get(rownum - currentRowFileBase);
+    int rowCacheIndex = currentRowFileWindow.getRowCacheIndex(rownum);
+    return rowCache.get(rowCacheIndex);
   }
 
   private File getRowsFileName() {
@@ -399,32 +421,29 @@ public class StreamingSheetReader implements Iterable<Row>, Serializable {
     return rowsFile;
   }
 
-  private int writeRows(File rowsFile) {
+  private void writeRows(File rowsFile, RowWindow rowWindow) {
     log.debug("Writing rows to file [" + rowsFile.getAbsolutePath() + "]");
-    int base = -1;
     try (FileOutputStream fout = new FileOutputStream(rowsFile);
         ObjectOutputStream oos = new ObjectOutputStream(fout);) {
-      base = rowCache.get(0).getRowNum();
-      oos.writeInt(rowCache.get(0).getRowNum());
+      oos.writeObject(rowWindow);
       oos.writeObject(rowCache);
       rowsFiles.add(rowsFile.getAbsolutePath());
     } catch (IOException e) {
       e.printStackTrace();
     }
-    return base;
   }
 
-  private int readRows(File rowsFile) {
+  private RowWindow readRows(File rowsFile) {
     log.debug("Reading rows from file [" + rowsFile.getAbsolutePath() + "]");
     rowCache.clear();
-    int base = -1;
+    RowWindow rowWindow = null;
     try (FileInputStream fin = new FileInputStream(rowsFile); ObjectInputStream ois = new ObjectInputStream(fin);) {
-      base = ois.readInt();
+      rowWindow = (RowWindow) ois.readObject();
       rowCache = (List<Row>) ois.readObject();
     } catch (Exception e) {
       e.printStackTrace();
     }
-    return base;
+    return rowWindow;
   }
 
   void setSheet(StreamingSheet sheet) {
@@ -455,6 +474,28 @@ public class StreamingSheetReader implements Iterable<Row>, Serializable {
     @Override
     public void remove() {
       throw new RuntimeException("NotSupported");
+    }
+  }
+
+  private class RowWindow implements Serializable {
+    private static final long serialVersionUID = 1L;
+
+    private final int minRowNum;
+    private final int maxRowNum;
+    private final int[] rowMap;
+
+    RowWindow(int minRowNum, int maxRowNum, int[] rowMap) {
+      this.minRowNum = minRowNum;
+      this.maxRowNum = maxRowNum;
+      this.rowMap = rowMap;
+    }
+
+    boolean contains(int rowNum) {
+      return minRowNum <= rowNum && maxRowNum >= rowNum;
+    }
+
+    int getRowCacheIndex(int rowNum) {
+      return rowMap[rowNum - minRowNum];
     }
   }
 
