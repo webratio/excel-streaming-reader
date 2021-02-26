@@ -51,6 +51,7 @@ public class StreamingSheetReader implements Iterable<Row>, Serializable {
   private final Set<Integer> hiddenColumns = new HashSet<>();
 
   private int lastRowNum;
+  private boolean lastRowNumInitialized;
   private int rowCacheSize;
   private List<Row> rowCache;
   private Iterator<Row> rowCacheIterator;
@@ -74,6 +75,7 @@ public class StreamingSheetReader implements Iterable<Row>, Serializable {
     this.rowCacheSize = rowCacheSize;
     this.currentRowFileWindow = null;
     this.rowCache = new ArrayList<Row>(rowCacheSize);
+    this.lastRowNumInitialized = false;
   }
 
   /**
@@ -93,23 +95,17 @@ public class StreamingSheetReader implements Iterable<Row>, Serializable {
         currentRowFile = getRowsFileName();
         int minRowNum = Integer.MAX_VALUE;
         int maxRowNum = Integer.MIN_VALUE;
-        int[] rowMap = new int[rowCacheSize];
+        Map<Integer, Integer> rowsIndexByRownum = new HashMap<Integer, Integer>();
+        int rowMapIndex = 0;
         for (Row row : rowCache) {
           int currentRowNum = row.getRowNum();
           rowsByRownum.put(currentRowNum, currentRowFile);
+          rowsIndexByRownum.put(currentRowNum, rowMapIndex++);
           minRowNum = Math.min(minRowNum, currentRowNum);
           maxRowNum = Math.max(maxRowNum, currentRowNum);
         }
 
-        // iterate again the row cache to build the mapping between the row num and the
-        // actual position in the array
-        int rowMapIndex = 0;
-        for (Row row : rowCache) {
-          int currentRowNum = row.getRowNum();
-          rowMap[currentRowNum - minRowNum] = rowMapIndex++;
-        }
-
-        currentRowFileWindow = new RowWindow(minRowNum, maxRowNum, rowMap);
+        currentRowFileWindow = new RowWindow(minRowNum, maxRowNum, rowsIndexByRownum);
         writeRows(currentRowFile, currentRowFileWindow);
       }
       return somethingRead;
@@ -137,9 +133,20 @@ public class StreamingSheetReader implements Iterable<Row>, Serializable {
       if("row".equals(tagLocalName)) {
         Attribute rowNumAttr = startElement.getAttributeByName(new QName("r"));
         Attribute isHiddenAttr = startElement.getAttributeByName(new QName("hidden"));
-        int rowIndex = Integer.parseInt(rowNumAttr.getValue()) - 1;
+        int rowIndex;
+        if (rowNumAttr != null) {
+          rowIndex = Integer.parseInt(rowNumAttr.getValue()) - 1;
+        } else if (currentRow != null) {
+          rowIndex = currentRow.getRowNum() + 1;
+        } else {
+          rowIndex = 0;
+        }
+        if (!lastRowNumInitialized || lastRowNum < rowIndex) {
+          lastRowNum = rowIndex;
+        }
         boolean isHidden = isHiddenAttr != null && ("1".equals(isHiddenAttr.getValue()) || "true".equals(isHiddenAttr.getValue()));
         currentRow = new StreamingRow(rowIndex, isHidden);
+
       } else if("col".equals(tagLocalName)) {
         Attribute isHiddenAttr = startElement.getAttributeByName(new QName("hidden"));
         boolean isHidden = isHiddenAttr != null && ("1".equals(isHiddenAttr.getValue()) || "true".equals(isHiddenAttr.getValue()));
@@ -185,7 +192,10 @@ public class StreamingSheetReader implements Iterable<Row>, Serializable {
             if(!Character.isDigit(ref.charAt(i))) {
               try {
                 lastRowNum = Integer.parseInt(ref.substring(i + 1)) - 1;
-              } catch(NumberFormatException ignore) { }
+                lastRowNumInitialized = true;
+              } catch (NumberFormatException ignore) {
+                lastRowNumInitialized = false;
+              }
               break;
             }
           }
@@ -482,9 +492,9 @@ public class StreamingSheetReader implements Iterable<Row>, Serializable {
 
     private final int minRowNum;
     private final int maxRowNum;
-    private final int[] rowMap;
+    private final Map<Integer, Integer> rowMap;
 
-    RowWindow(int minRowNum, int maxRowNum, int[] rowMap) {
+    RowWindow(int minRowNum, int maxRowNum, Map<Integer, Integer> rowMap) {
       this.minRowNum = minRowNum;
       this.maxRowNum = maxRowNum;
       this.rowMap = rowMap;
@@ -495,7 +505,7 @@ public class StreamingSheetReader implements Iterable<Row>, Serializable {
     }
 
     int getRowCacheIndex(int rowNum) {
-      return rowMap[rowNum - minRowNum];
+      return rowMap.get(rowNum);
     }
   }
 
