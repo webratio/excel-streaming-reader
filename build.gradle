@@ -1,11 +1,10 @@
 plugins {
     id 'java-library'
-    id 'signing'
     id 'maven-publish'
-    id 'io.github.gradle-nexus.publish-plugin' version '2.0.0'
     id 'org.cyclonedx.bom' version '3.1.0'
     id 'org.sonarqube' version '4.0.0.2929'
     id 'io.github.sgtsilvio.gradle.javadoc-links' version '0.9.0'
+    id 'biz.aQute.bnd.builder' version '7.0.0'
 }
 
 sonarqube {
@@ -64,23 +63,34 @@ test {
 
 tasks.named('jar') {
     manifest {
-        attributes('Automatic-Module-Name': 'com.github.pjfanning.excelstreamingreader')
+        attributes(
+            'Automatic-Module-Name': 'com.github.pjfanning.excelstreamingreader',
+            'Bundle-SymbolicName': "${project.group}.${project.name}",
+            'Bundle-Name': project.name,
+            'Bundle-Version': project.version.toString(),
+            'Bundle-ManifestVersion': '2',
+            'Export-Package': '' +
+                'com.github.pjfanning.xlsx;version=${project.version};-noimport:=true,' +
+                'com.github.pjfanning.xlsx.exceptions;version=${project.version};-noimport:=true',
+            'Private-Package': '' +
+                'com.github.pjfanning.xlsx.impl,' +
+                'com.github.pjfanning.xlsx.impl.ooxml',
+            'Import-Package': '' +
+                '!com.github.pjfanning.xlsx.*,' +
+                'com.github.pjfanning.poi.xssf.streaming;resolution:=optional,' +
+                '*',
+            '-noextraheaders': 'true'
+        )
     }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
 }
 
 compileTestJava.dependsOn('copyLicenseToBuildResources')
 jar.dependsOn('copyLicenseToBuildResources')
 javadoc.dependsOn('copyLicenseToBuildResources')
-
-nexusPublishing {
-    repositories {
-        // see https://central.sonatype.org/publish/publish-portal-ossrh-staging-api/#configuration
-        sonatype {
-            nexusUrl.set(uri("https://ossrh-staging-api.central.sonatype.com/service/local/"))
-            snapshotRepositoryUrl.set(uri("https://central.sonatype.com/repository/maven-snapshots/"))
-        }
-    }
-}
 
 publish.dependsOn cyclonedxBom
 
@@ -91,7 +101,7 @@ publishing {
             pom {
                 name = 'excel-streaming-reader'
                 description = 'Streaming Excel reader'
-                url = 'https://github.com/pjfanning/excel-streaming-reader'
+                url = 'https://github.com/webratio/excel-streaming-reader'
                 licenses {
                     license {
                         name = 'The Apache License, Version 2.0'
@@ -109,25 +119,29 @@ publishing {
                         name = 'PJ Fanning'
                         url = 'https://github.com/pjfanning'
                     }
+                    developer {
+                        id = 'webratio'
+                        name = 'WebRatio'
+                        url = 'https://www.webratio.com'
+                    }
                 }
                 scm {
-                    url = 'https://github.com/pjfanning/excel-streaming-reader'
-                    connection = 'scm:git://github.com/pjfanning/excel-streaming-reader.git'
-                    developerConnection = 'scm:git://github.com/pjfanning/excel-streaming-reader.git'
+                    url = 'https://github.com/webratio/excel-streaming-reader'
+                    connection = 'scm:git://github.com/webratio/excel-streaming-reader.git'
+                    developerConnection = 'scm:git://github.com/webratio/excel-streaming-reader.git'
                 }
             }
         }
     }
 }
 
-signing {
-    def signingKey = findProperty("signingKey")
-    def signingPassword = findProperty("signingPassword")
-    useInMemoryPgpKeys(signingKey, signingPassword)
-    sign publishing.publications.mavenJava
-}
-
 tasks.register('copyLicenseToBuildResources', Copy) {
     from layout.projectDirectory.file("LICENSE")
     into layout.buildDirectory.dir("resources/main/META-INF")
+}
+
+tasks.register('prepareForPublication') {
+    group = 'build'
+    description = 'Prepare for manual publishing. This task will assemble the project and generate the POM file for the Maven publication.'
+    dependsOn 'assemble', 'generatePomFileForMavenJavaPublication'
 }
