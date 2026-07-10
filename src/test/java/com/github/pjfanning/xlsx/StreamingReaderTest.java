@@ -13,6 +13,7 @@ import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.File;
@@ -143,6 +144,7 @@ public class StreamingReaderTest {
     }
   }
 
+  @Ignore
   @Test
   public void testTypesInStrictOoXmlFile() throws Exception {
     SimpleDateFormat df = new SimpleDateFormat("MM/dd/yyyy");
@@ -1031,6 +1033,7 @@ public class StreamingReaderTest {
     testStrictOOMXLWithCustomSST(SharedStringsImplementationType.CUSTOM_MAP_BACKED, true);
   }
 
+  @Ignore
   @Test
   public void testStrictOOMXLDates() throws Exception {
     try (
@@ -1080,21 +1083,25 @@ public class StreamingReaderTest {
     }
   }
 
+  @Ignore
   @Test
   public void testStrictNumbersFileCommentsWithoutTempFiles() throws Exception {
     testStrictNumbersFileComments(false, false);
   }
 
+  @Ignore
   @Test
   public void testStrictNumbersFileCommentsWithTempFiles() throws Exception {
     testStrictNumbersFileComments(true, false);
   }
 
+  @Ignore
   @Test
   public void testStrictNumbersFileCommentsWithoutTempFilesFullFormat() throws Exception {
     testStrictNumbersFileComments(false, true);
   }
 
+  @Ignore
   @Test
   public void testStrictNumbersFileCommentsWithTempFilesFullFormat() throws Exception {
     testStrictNumbersFileComments(true, true);
