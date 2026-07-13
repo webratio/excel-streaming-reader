@@ -44,6 +44,7 @@ ext {
 dependencies {
     api "org.apache.poi:poi:$poiVersion"
     api "org.apache.poi:poi-ooxml:$poiVersion"
+    api "org.apache.poi:poi-ooxml-full:$poiVersion"
     implementation "org.slf4j:slf4j-api:$slf4jVersion"
     implementation 'commons-io:commons-io:2.21.0'
     implementation 'org.apache.commons:commons-compress:1.28.0'
