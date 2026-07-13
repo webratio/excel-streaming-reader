@@ -75,7 +75,8 @@ tasks.named('jar') {
                 'com.github.pjfanning.xlsx.exceptions;version=${project.version};-noimport:=true',
             'Private-Package': '' +
                 'com.github.pjfanning.xlsx.impl,' +
-                'com.github.pjfanning.xlsx.impl.ooxml',
+                'com.github.pjfanning.xlsx.impl.ooxml' +
+                'com.github.pjfanning.xlsx.impl.serialization',
             'Import-Package': '' +
                 '!com.github.pjfanning.xlsx.*,' +
                 'com.github.pjfanning.poi.xssf.streaming;resolution:=optional,' +

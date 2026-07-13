@@ -268,8 +268,8 @@ public class StreamingSheetReader implements Iterable<Row> {
       //beginning of the Sheet
       XMLEventReader parser = getXmlInputFactory().createXMLEventReader(packagePart.getInputStream());
       StreamingRowIterator iterator = new StreamingRowIterator(this,
-              sst, stylesTable, parser, use1904Dates, rowCacheSize, hiddenColumns, columnWidths, mergedCells, hyperlinks,
-              sharedFormulaMap, defaultRowHeight, sheet);
+        sst, stylesTable, parser, use1904Dates, rowCacheSize, hiddenColumns, columnWidths, mergedCells, hyperlinks,
+        sharedFormulaMap, defaultRowHeight, sheet);
       iterators.add(iterator);
       return iterator;
     } catch (IOException e) {
@@ -380,4 +380,13 @@ public class StreamingSheetReader implements Iterable<Row> {
     }
     return xmlInputFactory;
   }
+
+  Row getRow(int rownum) {
+    if (iterators.isEmpty()) {
+      // create a new streaming iterator to parse sheet
+      iterator();
+    }
+    return iterators.get(0).getRow(rownum);
+  }
 }
+

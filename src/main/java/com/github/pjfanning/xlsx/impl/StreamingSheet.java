@@ -355,12 +355,9 @@ public class StreamingSheet implements Sheet {
     throw new UnsupportedOperationException("update operations are not supported");
   }
 
-  /**
-   * Not supported - use {@link #iterator()} or {@link #rowIterator()} instead
-   */
   @Override
   public Row getRow(int rownum) {
-    throw new UnsupportedOperationException("use iterator() or rowIterator() instead");
+    return reader.getRow(rownum);
   }
 
   /**

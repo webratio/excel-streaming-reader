@@ -8,6 +8,9 @@ import com.github.pjfanning.xlsx.exceptions.CloseException;
 import com.github.pjfanning.xlsx.exceptions.NotSupportedException;
 import com.github.pjfanning.xlsx.exceptions.ParseException;
 import com.github.pjfanning.xlsx.impl.ooxml.HyperlinkData;
+import com.github.pjfanning.xlsx.impl.serialization.SerializableXMLEvent;
+import com.github.pjfanning.xlsx.impl.serialization.XMLEventUtils;
+
 import org.apache.poi.ooxml.POIXMLException;
 import org.apache.poi.ss.SpreadsheetVersion;
 import org.apache.poi.ss.formula.FormulaParser;
@@ -33,7 +36,18 @@ import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.events.Attribute;
 import javax.xml.stream.events.EndElement;
 import javax.xml.stream.events.StartElement;
-import javax.xml.stream.events.XMLEvent;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -64,10 +78,12 @@ class StreamingRowIterator implements CloseableIterator<Row> {
   private final Map<Integer, Float> columnWidths;
   private final Set<CellRangeAddress> mergedCells;
   private final Set<HyperlinkData> hyperlinks;
-  private final DataFormatter dataFormatter = new DataFormatter();
-  private final List<Row> rowCache = new ArrayList<>();
+  private final DataFormatter  dataFormatter = new DataFormatter();
+  private final List<Row> rowCache;
   private final StringBuilder contentBuilder = new StringBuilder(64);
   private final StringBuilder formulaBuilder = new StringBuilder(64);
+  private final Map<Integer, RowWindow> rowWindowByRowNum = new HashMap<>();
+  private final Set<String> eventsFiles = new HashSet<String>();
 
   private Map<String, SharedFormula> sharedFormulaMap;
   private int currentRowNum;
@@ -81,6 +97,8 @@ class StreamingRowIterator implements CloseableIterator<Row> {
   private boolean insideCharElement;
   private boolean insideFormulaElement;
   private boolean insideIS;
+  private RowWindow currentRowWindow = null;
+  private ArrayList<SerializableXMLEvent> currentRowWindowEvents = new ArrayList<SerializableXMLEvent>();
 
   StreamingRowIterator(final StreamingSheetReader streamingSheetReader,
                        final SharedStrings sst, final StylesTable stylesTable,
@@ -103,8 +121,9 @@ class StreamingRowIterator implements CloseableIterator<Row> {
     this.sharedFormulaMap = sharedFormulaMap;
     this.defaultRowHeight = defaultRowHeight;
     this.sheet = sheet;
+    this.rowCache = new ArrayList<>(rowCacheSize);
 
-    if (!getRow()) {
+    if (!loadNextRowWindow()) {
       LOG.debug("there appear to be no rows");
     }
   }
@@ -118,20 +137,42 @@ class StreamingRowIterator implements CloseableIterator<Row> {
    *
    * @return true if data was read
    */
-  private boolean getRow() throws ParseException {
+  private boolean loadNextRowWindow() throws ParseException {
     try {
+      currentRowWindowEvents.clear();
       rowCache.clear();
       while(rowCache.size() < rowCacheSize && parser.hasNext()) {
-        handleEvent(parser.nextEvent());
+        SerializableXMLEvent event = XMLEventUtils.toSerializable(parser.nextEvent());
+        currentRowWindowEvents.add(event);
+        handleEvent(event);
       }
       rowCacheIterator = rowCache.iterator();
-      return rowCacheIterator.hasNext();
+      boolean somethingRead = rowCacheIterator.hasNext();
+      if (somethingRead) {
+        int minRowNum = Integer.MAX_VALUE;
+        int maxRowNum = Integer.MIN_VALUE;
+        int rowMapIndex = 0;
+        Map<Integer, Integer> rowsIndexByRownum = new HashMap<Integer, Integer>();
+        currentRowWindow = new RowWindow(rowsIndexByRownum, getRowWindowFile());
+        for (Row row : rowCache) {
+          int currentRowNum = row.getRowNum();
+          rowsIndexByRownum.put(currentRowNum, rowMapIndex++);
+          rowWindowByRowNum.put(row.getRowNum(), currentRowWindow);
+          minRowNum = Math.min(minRowNum, currentRowNum);
+          maxRowNum = Math.max(maxRowNum, currentRowNum);
+        }
+        currentRowWindow.init(minRowNum, maxRowNum);
+        writeEvents(currentRowWindow, currentRowWindowEvents);
+      }
+      return somethingRead;
     } catch(XMLStreamException e) {
       throw new ParseException("Error reading XML stream", e);
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
     }
   }
 
-  private void handleEvent(XMLEvent event) {
+  private void handleEvent(SerializableXMLEvent event) {
     if (event.getEventType() == XMLStreamConstants.CHARACTERS) {
       if (insideCharElement) {
         contentBuilder.append(event.asCharacters().getData());
@@ -622,6 +663,9 @@ class StreamingRowIterator implements CloseableIterator<Row> {
     try {
       if (removeFromReader) streamingSheetReader.removeIterator(this);
       parser.close();
+      rowWindowByRowNum.clear();
+      eventsFiles.clear();
+      currentRowWindowEvents.clear();
     } catch(XMLStreamException e) {
       throw new CloseException(e);
     }
@@ -641,7 +685,7 @@ class StreamingRowIterator implements CloseableIterator<Row> {
 
   @Override
   public boolean hasNext() throws ParseException {
-    return (rowCacheIterator != null && rowCacheIterator.hasNext()) || getRow();
+    return (rowCacheIterator != null && rowCacheIterator.hasNext()) || loadNextRowWindow();
   }
 
   @Override
@@ -661,4 +705,117 @@ class StreamingRowIterator implements CloseableIterator<Row> {
   public void remove() {
     throw new NotSupportedException();
   }
+
+  Row getRow(int rownum) {
+    if (currentRowWindow != null && currentRowWindow.contains(rownum)) {
+      return findRowInCurrentWindow(rownum);
+    }
+
+    RowWindow cachedRowWindow = rowWindowByRowNum.get(rownum);
+    if (cachedRowWindow != null) {
+      reloadRowWindow(cachedRowWindow);
+      return findRowInCurrentWindow(rownum);
+    }
+
+    while (loadNextRowWindow()) {
+      if (currentRowWindow != null && currentRowWindow.contains(rownum)) {
+        return findRowInCurrentWindow(rownum);
+      }
+    }
+    return null;
+  }
+
+  private Row findRowInCurrentWindow(int rownum) {
+    if (currentRowWindow == null) {
+      return null;
+    }
+    int rowCacheIndex = currentRowWindow.getRowCacheIndex(rownum);
+    if (rowCacheIndex < 0 || rowCacheIndex >= rowCache.size()) {
+      return null;
+    }
+    return rowCache.get(rowCacheIndex);
+  }
+
+  private void reloadRowWindow(RowWindow rowWindow) {
+    if (currentRowWindow != null && currentRowWindow.matches(rowWindow)) {
+      return;
+    }
+    try {
+      currentRowWindow = rowWindow;
+      rowCache.clear();
+      currentRowWindowEvents = readEvents(rowWindow);
+      for(int i = 0; i < currentRowWindowEvents.size(); i++) {
+        handleEvent(currentRowWindowEvents.get(i));
+      }
+    } catch (ClassNotFoundException e) {
+      throw new RuntimeException(e);
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  private File getRowWindowFile() throws IOException {
+    File rowsFile = null;
+    String rowsFileName = Files.createTempFile(String.valueOf(System.currentTimeMillis()), ".ser").toString();
+    rowsFile = new File(rowsFileName);
+    rowsFile.mkdirs();
+    return rowsFile;
+  }
+
+  private static ArrayList<SerializableXMLEvent> readEvents(RowWindow rowWindow) throws IOException, ClassNotFoundException {
+    LOG.debug("Reading rows from file [" + rowWindow.file.getAbsolutePath() + "]");
+    try (
+      FileInputStream fin = new FileInputStream(rowWindow.file);
+      BufferedInputStream bin = new BufferedInputStream(fin, 64 * 1024);
+      ObjectInputStream ois = new ObjectInputStream(bin);
+    ) {
+      return (ArrayList<SerializableXMLEvent>) ois.readObject();
+    }
+  }
+
+  private static void writeEvents(RowWindow rowWindow, ArrayList<SerializableXMLEvent> rowWindowEvents) throws IOException {
+    LOG.debug("Writing rows to file [" + rowWindow.file.getAbsolutePath() + "]");
+    try (
+      FileOutputStream fout = new FileOutputStream(rowWindow.file);
+      BufferedOutputStream bout = new BufferedOutputStream(fout, 64 * 1024);
+      ObjectOutputStream oos = new ObjectOutputStream(bout);
+    ) {
+      oos.writeObject(rowWindowEvents);
+    }
+  }
+
+  private static class RowWindow implements Serializable {
+    private static final long serialVersionUID = 1L;
+
+    private final Map<Integer, Integer> rowMap;
+    private final File file;
+
+    private long minRowNum = -1;
+    private long maxRowNum = -1;
+
+    RowWindow(Map<Integer, Integer> rowMap, File file) {
+      this.rowMap = rowMap;
+      this.file = file;
+    }
+
+    void init(long minRowNum, long maxRowNum) {
+      this.minRowNum = minRowNum;
+      this.maxRowNum = maxRowNum;
+    }
+
+    boolean contains(int rowNum) {
+      return rowMap.containsKey(rowNum);
+    }
+
+    int getRowCacheIndex(int rowNum) {
+      return rowMap.get(rowNum);
+    }
+
+    boolean matches(RowWindow other) {
+      return other != null
+          && minRowNum == other.minRowNum
+          && maxRowNum == other.maxRowNum;
+    }
+  }
 }
+
