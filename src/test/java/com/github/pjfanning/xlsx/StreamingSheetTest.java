@@ -63,6 +63,42 @@ public class StreamingSheetTest {
       assertEquals(0, sheet.getLastRowNum());
       assertEquals(workbook, sheet.getWorkbook());
     }
+
+    try(
+        InputStream is = getInputStream("with_rownum.xlsx");
+        Workbook workbook = StreamingReader.builder().rowCacheSize(10).bufferSize(4096).open(is)
+    ) {
+      assertEquals(1, workbook.getNumberOfSheets());
+      Sheet sheet = workbook.getSheetAt(0);
+      assertEquals(14216, sheet.getLastRowNum());
+    }
+
+    try(
+        InputStream is = getInputStream("without_rownum.xlsx");
+        Workbook workbook = StreamingReader.builder().rowCacheSize(10).bufferSize(4096).open(is)
+    ) {
+      assertEquals(1, workbook.getNumberOfSheets());
+      Sheet sheet = workbook.getSheetAt(0);
+      assertEquals(9, sheet.getLastRowNum());
+    }
+
+    try(
+        InputStream is = getInputStream("row_spans_over_multiple_columns.xlsx");
+        Workbook workbook = StreamingReader.builder().rowCacheSize(1000).bufferSize(4096).open(is)
+    ) {
+      assertEquals(1, workbook.getNumberOfSheets());
+      Sheet sheet = workbook.getSheetAt(0);
+      assertEquals(28, sheet.getLastRowNum());
+    }
+
+    try(
+        InputStream is = getInputStream("from_libreoffice.xlsx");
+        Workbook workbook = StreamingReader.builder().rowCacheSize(1000).bufferSize(4096).open(is)
+    ) {
+      assertEquals(1, workbook.getNumberOfSheets());
+      Sheet sheet = workbook.getSheetAt(0);
+      assertEquals(1048575, sheet.getLastRowNum());
+    }
   }
 
   @Test(expected = MissingSheetException.class)
