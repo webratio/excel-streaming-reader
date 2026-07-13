@@ -153,6 +153,33 @@ public class StreamingSheetTest {
   }
 
   @Test
+  public void testGetRowRandomAccess() throws Exception {
+    try (
+            InputStream is = getInputStream("large.xlsx");
+            Workbook workbook = StreamingReader.builder().rowCacheSize(5).open(is)
+    ) {
+      Sheet sheet = workbook.getSheetAt(0);
+
+      Row row10 = sheet.getRow(9);
+      assertNotNull("row 10 found", row10);
+      assertEquals(10, row10.getCell(0).getNumericCellValue(), 0.0);
+      assertEquals("#10", row10.getCell(1).getStringCellValue());
+
+      Row row2 = sheet.getRow(1);
+      assertNotNull("row 2 found", row2);
+      assertEquals(2, row2.getCell(0).getNumericCellValue(), 0.0);
+      assertEquals("#2", row2.getCell(1).getStringCellValue());
+
+      Row row11 = sheet.getRow(10);
+      assertNotNull("row 11 found", row11);
+      assertEquals(11, row11.getCell(0).getNumericCellValue(), 0.0);
+      assertEquals("#11", row11.getCell(1).getStringCellValue());
+
+      assertNull("missing row should be null", sheet.getRow(200));
+    }
+  }
+
+  @Test
   public void testHyperlinksEnabled() throws Exception {
     try (
             InputStream is = getInputStream("59775.xlsx");

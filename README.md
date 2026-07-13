@@ -192,6 +192,12 @@ Workbook workbook = StreamingReader.builder()
         .bufferSize(4096)     
         .open(f);
 ```
+To support random row access, the XML events processed by `StreamingRowIterator.loadNextRowWindow()` are serialized and stored in a temporary file.
+When a row is requested through `StreamingRowIterator.getRow(int rowNum)`:
+* If the requested row is in the current row window, it is returned directly from the row cache.
+* If the requested row belongs to a previously read row window, that row window is reloaded into the row cache before returning the row. Reloading is performed by deserializing the corresponding temporary file and processing the XML events in the same way as `StreamingRowIterator.loadNextRowWindow()` processes newly parsed events.
+* If the requested row has not been read yet, row windows continue to be loaded until the current window contains the requested row, which is then returned.
+
 
 This library will ONLY work with XLSX files. The older XLS format is not capable of being streamed.
 
