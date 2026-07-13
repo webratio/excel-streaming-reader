@@ -186,7 +186,7 @@ public class StreamingSheetReader implements Iterable<Row> {
   }
 
   void setLastRowNum(int lastRowNum) {
-    this.lastRowNum = lastRowNum;
+    this.lastRowNum = Math.max(this.lastRowNum, lastRowNum);
   }
 
   /**

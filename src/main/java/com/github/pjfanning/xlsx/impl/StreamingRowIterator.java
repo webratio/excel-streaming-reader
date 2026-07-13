@@ -192,6 +192,7 @@ class StreamingRowIterator implements CloseableIterator<Row> {
           rowIndex = parseInt(rowNumAttr.getValue()) - 1;
           currentRowNum = rowIndex;
         }
+        streamingSheetReader.setLastRowNum(rowIndex);
         Attribute isHiddenAttr = startElement.getAttributeByName(QNAME_HIDDEN);
         Attribute htAttr = startElement.getAttributeByName(QNAME_HT);
         float height = getDefaultRowHeight();
