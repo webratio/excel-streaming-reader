@@ -305,6 +305,10 @@ public class StreamingWorkbookReader implements Iterable<Sheet>, Date1904Support
     return sheetProperties;
   }
 
+  StylesTable getStyles() {
+    return styles;
+  }
+
   @Override
   public Iterator<Sheet> iterator() throws ReadException {
     try {

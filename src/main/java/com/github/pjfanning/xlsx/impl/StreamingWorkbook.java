@@ -9,7 +9,9 @@ import org.apache.poi.ss.formula.EvaluationWorkbook;
 import org.apache.poi.ss.formula.udf.UDFFinder;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.usermodel.Row.MissingCellPolicy;
+import org.apache.poi.xssf.usermodel.XSSFFont;
 import org.apache.poi.xssf.usermodel.XSSFPictureData;
+import org.openxmlformats.schemas.spreadsheetml.x2006.main.CTFont;
 
 import javax.xml.stream.XMLStreamException;
 import java.io.IOException;
@@ -21,6 +23,7 @@ public class StreamingWorkbook implements Workbook, Date1904Support, AutoCloseab
   private final StreamingWorkbookReader reader;
   private POIXMLProperties.CoreProperties coreProperties = null;
   private List<XSSFPictureData> pictures;
+  private StreamingCreationHelper creationHelper;
 
   public StreamingWorkbook(StreamingWorkbookReader reader) {
     this.reader = reader;
@@ -210,6 +213,24 @@ public class StreamingWorkbook implements Workbook, Date1904Support, AutoCloseab
     return reader.isDate1904();
   }
 
+  @Override
+  public Font createFont() {
+    CTFont ctFont = CTFont.Factory.newInstance();
+    XSSFFont font = new XSSFFont(ctFont);
+    font.setFontName(XSSFFont.DEFAULT_FONT_NAME);
+    font.setFontHeight((double) XSSFFont.DEFAULT_FONT_SIZE);
+    font.registerTo(reader.getStyles());
+    return font;
+  }
+
+  @Override
+  public CreationHelper getCreationHelper() {
+    if (creationHelper == null) {
+      creationHelper = new StreamingCreationHelper(this);
+    }
+    return creationHelper;
+  }
+
   /* Not supported */
 
   /**
@@ -297,14 +318,6 @@ public class StreamingWorkbook implements Workbook, Date1904Support, AutoCloseab
    */
   @Override
   public void removeSheetAt(int index) {
-    throw new UnsupportedOperationException();
-  }
-
-  /**
-   * Not supported
-   */
-  @Override
-  public Font createFont() {
     throw new UnsupportedOperationException();
   }
 
@@ -485,14 +498,6 @@ public class StreamingWorkbook implements Workbook, Date1904Support, AutoCloseab
    */
   @Override
   public int addPicture(byte[] pictureData, int format) {
-    throw new UnsupportedOperationException();
-  }
-
-  /**
-   * Not supported
-   */
-  @Override
-  public CreationHelper getCreationHelper() {
     throw new UnsupportedOperationException();
   }
 

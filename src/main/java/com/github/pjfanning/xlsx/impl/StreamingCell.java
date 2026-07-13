@@ -3,7 +3,7 @@ package com.github.pjfanning.xlsx.impl;
 import com.github.pjfanning.xlsx.XmlUtils;
 import com.github.pjfanning.xlsx.exceptions.NotSupportedException;
 import org.apache.poi.ooxml.POIXMLException;
-import org.apache.poi.ss.formula.FormulaParseException;
+import org.apache.poi.ss.SpreadsheetVersion;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellAddress;
 import org.apache.poi.ss.util.CellRangeAddress;
@@ -403,6 +403,120 @@ public class StreamingCell implements Cell {
     return (sheet == null) ? null : sheet.getHyperlink(getAddress());
   }
 
+   /**
+    * @throws NotSupportedException if the cell type is unsupported
+    */
+  @Override
+  public void setCellType(CellType cellType) {
+    switch(cellType) {
+      case BLANK:
+        setType(null);
+        break;
+      case NUMERIC:
+        setType("n");
+        break;
+      case STRING:
+        setType("s");
+        break;
+      case FORMULA:
+        setType("str");
+        break;
+      case BOOLEAN:
+        setType("b");
+        break;
+      case ERROR:
+        setType("e");
+        break;
+      default:
+        throw new NotSupportedException("Unsupported cell type '" + cellType + "'");
+    }
+  }
+
+  @Override
+  public void setBlank() { 
+    setCellType(CellType.BLANK);
+    setRawContents(null);
+   }
+
+  @Override
+  public void setCellValue(double value) {
+    if (Double.isInfinite(value)) {
+      /* 
+       * Excel does not support positive/negative infinities,
+       * rather, it gives a #DIV/0! error in these cases.
+       */
+      setCellType(CellType.ERROR);
+      setRawContents(FormulaError.DIV0.getString());
+    } else if (Double.isNaN(value)) {
+      /*
+       * Excel does not support Not-a-Number (NaN),
+       * rather, it immediately generates an #NUM! error.
+       */
+      setCellType(CellType.ERROR);
+      setRawContents(FormulaError.NUM.getString());
+    } else {
+      setCellType(CellType.NUMERIC);
+      setRawContents(String.valueOf(value));
+    }
+  }
+
+  @Override
+  public void setCellValue(Date value) {
+    setCellValue(DateUtil.getExcelDate(value, use1904Dates));
+  }
+
+  @Override
+  public void setCellValue(Calendar value) {
+    setCellValue(DateUtil.getExcelDate(value, use1904Dates));
+  }
+
+  @Override
+  public void setCellValue(LocalDate value) {
+    setCellValue(DateUtil.getExcelDate(value, use1904Dates));
+  }
+
+  @Override
+  public void setCellValue(LocalDateTime value) {
+    setCellValue(DateUtil.getExcelDate(value, use1904Dates));
+  }
+
+  @Override
+  public void setCellValue(RichTextString value) {
+    if (value == null || value.getString() == null) {
+      setCellType(CellType.BLANK);
+      return;
+    }
+    if (value.length() > SpreadsheetVersion.EXCEL2007.getMaxTextLength()) {
+      throw new IllegalArgumentException("The maximum length of cell contents (text) is 32,767 characters");
+    }
+    CellType cellType = getCellType();
+    switch (cellType) {
+      case FORMULA:
+        setRawContents(value.getString());
+        setCellType(CellType.STRING);
+        break;
+      default:
+        setRawContents(value.getString());
+        break;
+    }
+  }
+
+  @Override
+  public void setCellValue(String value) {
+    setCellValue(value == null ? null : new XSSFRichTextString(value));
+  }
+
+  @Override
+  public void setCellFormula(String formula) {
+    setFormula(formula);
+  }
+
+  @Override
+  public void setCellValue(boolean value) {
+    setCellType(CellType.BOOLEAN);
+    setRawContents(String.valueOf(value));
+  }
+
   /* Not supported */
 
   /**
@@ -411,115 +525,7 @@ public class StreamingCell implements Cell {
    * @throws NotSupportedException not supported
    */
   @Override
-  public void setCellType(CellType cellType) {
-    throw new NotSupportedException("update operations are not supported");
-  }
-
-  /**
-   * Update operations are not supported
-   *
-   * @throws NotSupportedException not supported
-   */
-  @Override
-  public void setBlank() { throw new NotSupportedException("update operations are not supported"); }
-
-  /**
-   * Update operations are not supported
-   *
-   * @throws NotSupportedException not supported
-   */
-  @Override
-  public void setCellValue(double value) {
-    throw new NotSupportedException("update operations are not supported");
-  }
-
-  /**
-   * Update operations are not supported
-   *
-   * @throws NotSupportedException not supported
-   */
-  @Override
-  public void setCellValue(Date value) {
-    throw new NotSupportedException("update operations are not supported");
-  }
-
-  /**
-   * Update operations are not supported
-   *
-   * @throws NotSupportedException not supported
-   */
-  @Override
-  public void setCellValue(Calendar value) {
-    throw new NotSupportedException("update operations are not supported");
-  }
-
-  /**
-   * Update operations are not supported
-   *
-   * @throws NotSupportedException not supported
-   */
-  @Override
-  public void setCellValue(LocalDate value) {
-    throw new NotSupportedException("update operations are not supported");
-  }
-
-  /**
-   * Update operations are not supported
-   *
-   * @throws NotSupportedException not supported
-   */
-  @Override
-  public void setCellValue(LocalDateTime value) {
-    throw new NotSupportedException("update operations are not supported");
-  }
-
-  /**
-   * Update operations are not supported
-   *
-   * @throws NotSupportedException not supported
-   */
-  @Override
-  public void setCellValue(RichTextString value) {
-    throw new NotSupportedException("update operations are not supported");
-  }
-
-  /**
-   * Update operations are not supported
-   *
-   * @throws NotSupportedException not supported
-   */
-  @Override
-  public void setCellValue(String value) {
-    throw new NotSupportedException("update operations are not supported");
-  }
-
-  /**
-   * Update operations are not supported
-   *
-   * @throws NotSupportedException not supported
-   */
-  @Override
-  public void setCellFormula(String formula) {
-    throw new NotSupportedException("update operations are not supported");
-  }
-
-  /**
-   * Update operations are not supported
-   *
-   * @throws NotSupportedException not supported
-   */
-  @Override
   public void removeFormula() {
-    throw new NotSupportedException("update operations are not supported");
-  }
-
-  /**
-   * Update operations are not supported
-   *
-   * @throws NotSupportedException not supported
-   */
-  @Override
-  public void setCellValue(boolean value) {
     throw new NotSupportedException("update operations are not supported");
   }
 
